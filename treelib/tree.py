@@ -764,5 +764,84 @@ class Tree(object):
         """Return the json string corresponding to self"""
         return json.dumps(self.to_dict(with_data=with_data, sort=sort, reverse=reverse))
 
+# New methods for specific purpose - Florent Langenfeld
+
+    def ancestor(self, nid, level=None):
+        assert level != "domain", "Le niveau \"domain\" est le plus bas, il ne peut pas être un parent."
+        assert level in [None, "class", "fold", "superfamily", "family", "protein", "species"], "Level doit être \"class\", \"fold\", \"superfamily\", \"family\", \"protein\" ou \"species\"!"
+
+        new_node = self.parent(nid)
+
+        if level is None:
+            return new_node
+        elif new_node.data["level"] == level:
+            return new_node
+        else:
+            return self.ancestor(new_node.identifier, level=level)     
+
+
+    def ancestor_subtree(self, nid, level=None):
+        assert level != "domain", "Le niveau \"domain\" est le plus bas, il ne peut pas être un parent."
+        assert level in [None, "class", "fold", "superfamily", "family", "protein", "species"], "Level doit être \"class\", \"fold\", \"superfamily\", \"family\", \"protein\" ou \"species\"!"
+
+        new_node = self.ancestor(nid, level=level)
+        return self.subtree(new_node.identifier)
+
+
+    def ancestor_leaves(self, nid, level=None, filter=None):
+        assert level != "domain", "Le niveau \"domain\" est le plus bas, il ne peut pas être un parent."
+        assert level in [None, "class", "fold", "superfamily", "family", "protein", "species"], "Level doit être \"class\", \"fold\", \"superfamily\", \"family\", \"protein\" ou \"species\"!"
+
+        if filter:
+            filtered_leaves = []
+            new_root = self.ancestor(nid, level=level)
+            for nodeid in self.expand_tree(new_root.identifier, filter=filter):
+                node = self.get_node(nodeid)
+                if node.data["level"] == "domain":
+                    filtered_leaves += [node]
+            return filtered_leaves
+        else:
+            new_tree = self.ancestor_subtree(nid, level=level)
+            return new_tree.leaves()
+
+
+    def prune_tree(self, rmn_liste):
+        """
+        On enlève les branches de l'arbre qui ne contiennent pas de noeud de ```rmn_liste```
+        """
+        assert isinstance(rmn_liste[0], str), "rmn_liste doit être une liste de chaîne de caractère"
+
+        pruned_tree = Tree(self.subtree(self.root), deep=True)
+        rmn_id = [pdb.split(':')[0].lower() for pdb in rmn_liste]
+
+        for node in self.all_nodes_itr():
+            if node.data["level"] == "domain":
+                pdbid = node.data["PDBid"].lower()
+                if pdbid not in rmn_id:
+                    pruned_tree.remove_node(node.identifier)
+        
+        leaves = pruned_tree.leaves(pruned_tree.root)
+        for node in leaves:
+            pruned_tree.prune_branch(node)
+
+        return pruned_tree
+
+    def prune_branch(arbre, node):
+        node_id = node.identifier
+
+        if node.data["level"] == "domain":
+            return
+        elif node.data["level"] == "root":
+            return
+        else:
+            children = arbre.children(node_id)
+            if len(children) == 0:
+                parent_id = arbre.parent(node_id)
+                arbre.remove_node(node_id)
+                arbre.prune_branch(parent_id)
+                return
+            elif len(children) >= 1:
+                return
+
 if __name__ == '__main__':
     pass
